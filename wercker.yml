@@ -26,46 +26,37 @@ push-release:
         ports: 8080
         cmd: sh target/bin/start  
         
-apiVersion: extensions/v1beta1
-kind: Deployment
-metadata:
-  name: twitter-feed-v1
-  labels:
-    commit: ${WERCKER_GIT_COMMIT}
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: twitter-feed
-  template:
-    metadata:
-      labels:
-        app: twitter-feed
-        commit: ${WERCKER_GIT_COMMIT}
-    spec:
-      containers:
-      - name: twitter-feed
-        image: ${DOCKER_REGISTRY}/${DOCKER_REPO}:${WERCKER_GIT_BRANCH}-${WERCKER_GIT_COMMIT}
-        imagePullPolicy: Always
-        ports:
-        - name: twitter-feed
-          containerPort: 8080
-          protocol: TCP
-      imagePullSecrets:
-        - name: wercker
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: twitter-feed
-  labels:
-    app: twitter-feed
-    commit: ${WERCKER_GIT_COMMIT}
-spec:
-  ports:
-  - port: 30000
-    targetPort: 8080
-  selector:
-    app: twitter-feed
-  type: ClusterIP
----
+#Deploy our container from the Oracle Container Registry to the Oracle Container Engine (Kubernetes)
+deploy-to-cluster:
+  box:
+      id: alpine
+      cmd: /bin/sh
+
+  steps:
+
+  - bash-template
+
+  - kubectl:
+      name: delete secret
+      server: $KUBERNETES_MASTER
+      token: $KUBERNETES_AUTH_TOKEN
+      insecure-skip-tls-verify: true
+      command: delete secret wercker; echo delete registry secret
+
+  - kubectl:
+      name: create secret
+      server: $KUBERNETES_MASTER
+      token: $KUBERNETES_AUTH_TOKEN
+      insecure-skip-tls-verify: true
+      command: create secret docker-registry wercker --docker-server=$DOCKER_REGISTRY --docker-email=nobody@oracle.com --docker-username=$DOCKER_USERNAME --docker-password='$OCI_AUTH_TOKEN'; echo create registry secret
+
+  - script:
+      name: "Visualise Kubernetes config"
+      code: cat kubernetes.yml
+
+  - kubectl:
+      name: deploy to kubernetes
+      server: $KUBERNETES_MASTER
+      token: $KUBERNETES_AUTH_TOKEN
+      insecure-skip-tls-verify: true
+      command: apply -f kubernetes.yml
